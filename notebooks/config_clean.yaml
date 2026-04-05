@@ -1,0 +1,89 @@
+# config.yaml — 정제 모듈 설정 (SAP 샘플 데이터 기준)
+# 클라이언트별로 이 파일을 복사·수정하여 사용
+
+client: "SAP_sample"
+encoding: "utf-8-sig"
+
+# ──────────────────────────────────────────────
+# 경로
+# ──────────────────────────────────────────────
+paths:
+  input_file:       "master_gl_절대금액 표시.csv"
+  output_clean:     "master_gl_clean.csv"
+  output_subtotal:  "master_gl_subtotal.csv"
+
+# ──────────────────────────────────────────────
+# 로드 설정
+# ──────────────────────────────────────────────
+# 지수표기·앞자리 0 소실 방지를 위해 str로 강제 로드할 컬럼 (원본 한글 컬럼명)
+str_cols:
+  - "전표번호"
+  - "회사코드"
+  - "회계연도"
+  - "라인번호"
+  - "계정코드"
+  - "역분개참조번호"
+
+# ──────────────────────────────────────────────
+# 컬럼명 표준화 (한글 → 내부 표준 영어)
+# ──────────────────────────────────────────────
+column_map:
+  "전표번호":           "doc_no"
+  "회사코드":           "company_code"
+  "회계연도":           "fisc_year"
+  "라인번호":           "line_no"
+  "전기일":             "post_date"
+  "증빙일":             "doc_date"
+  "회계월":             "fisc_month"
+  "계정코드":           "acc_code"
+  "계정명":             "acc_name"
+  "계정속성(BS/PL)":    "acc_type"
+  "현지통화금액":       "amount"
+  "차대구분":           "dc_indicator"
+  "통합거래처명":       "counterparty"
+  "원가센터명(부서명)": "department"
+  "적요":               "description"
+  "전표성격":           "doc_type"
+  "역분개여부":         "reversal_yn"
+  "역분개참조번호":     "reversal_ref"
+
+# ──────────────────────────────────────────────
+# 소계행 탐지 기준
+# ──────────────────────────────────────────────
+subtotal:
+  keywords: ["소계", "합계", "total", "subtotal", "계"]  # acc_name 대상 (대소문자 무시)
+  acc_code_min_len: 6      # 계정코드 자릿수가 이보다 짧으면 소계행으로 판단
+  required_not_null: "doc_no"  # 이 컬럼이 NaN이면 소계행으로 판단
+
+# ──────────────────────────────────────────────
+# 날짜 설정
+# ──────────────────────────────────────────────
+date:
+  post_date_col: "post_date"
+  doc_date_col:  "doc_date"
+  fisc_month_col: "fisc_month"   # "04월" 형태 → 정수 4로 파싱
+
+# ──────────────────────────────────────────────
+# 금액 설정
+# ──────────────────────────────────────────────
+amount:
+  type: "C"                 # A: 차대 컬럼 분리 / B: 순금액 단일 / C: 절대금액+플래그 / D: 잔액누계
+  # C형 설정
+  amount_col: "amount"      # column_map 적용 후 컬럼명
+  dc_col:     "dc_indicator"
+  debit_keywords: ["차변", "Debit", "DR", "S"]
+  # B형 설정 (type: B 시 사용)
+  net_col: "net_amount"
+  # A형 설정 (type: A 시 사용)
+  debit_col:  "debit_amount"
+  credit_col: "credit_amount"
+
+# ──────────────────────────────────────────────
+# 파생변수·플래그 설정
+# ──────────────────────────────────────────────
+flags:
+  reversal_col:         "reversal_yn"
+  reversal_keyword:     "역분개"
+  acc_type_col:         "acc_type"
+  acc_type_pl_keyword:  "PL"
+  fisc_year_col:        "fisc_year"
