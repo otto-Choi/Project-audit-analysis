@@ -1,0 +1,54 @@
+# anomaly_config.yaml — Rule Engine 설정
+# 각 rule의 enabled: false 로 개별 비활성화 가능
+
+risk_score:
+  weights:
+    weekend_posting:      1
+    month_end_posting:    2
+    reversal_entry:       2
+    duplicate_journal:    3
+    unusual_round_amount: 1
+    large_manual_entry:   3
+    unbalanced_journal:   5
+    amount_outlier:       2
+
+  thresholds:
+    low:    1   # score >= 1
+    medium: 3   # score >= 3
+    high:   5   # score >= 5
+
+anomaly:
+
+  weekend_posting:
+    enabled: true
+
+  month_end_posting:
+    enabled: true
+    last_days: 3          # 월말 기준 마지막 N일
+
+  reversal_entry:
+    enabled: true
+
+  duplicate_journal:
+    enabled: true
+    key_cols:
+      - doc_no
+      - line_no
+
+  unusual_round_amount:
+    enabled: true
+    modulus: 1000000      # 이 단위의 배수이면 flag
+
+  large_manual_entry:
+    enabled: true
+    doc_types: [SA]       # 해당 전표유형만 검사
+    threshold: 100000000  # 절대금액 기준
+
+  unbalanced_journal:
+    enabled: true
+    tolerance: 0.01       # 차대 차이 허용 오차 (원 단위)
+
+  amount_outlier:
+    enabled: true
+    z_threshold: 3.0      # 계정별 z-score 임계값 (절대값 기준)
+    min_count: 10         # 계정 내 최소 거래 건수 (미만이면 제외)

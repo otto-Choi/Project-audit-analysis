@@ -1,0 +1,26 @@
+# SAP 원본 및 대용량 데이터
+data/w2_raw/
+data/w3_interim/
+data/w4_processed/
+data/w5_output/
+data/w6_anomaly/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.ipynb_checkpoints/
+
+# 내부 파일
+CLAUDE.md
+
+# 편집기 임시 파일
+*.tmp.*
+*.tmp
+
+# Claude Code 내부 폴더
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db
