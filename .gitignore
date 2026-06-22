@@ -14,6 +14,10 @@ __pycache__/
 *.pyc
 *.pyo
 .ipynb_checkpoints/
+venv/
+.venv/
+env/
+.env
 
 # 내부 파일
 CLAUDE.md
