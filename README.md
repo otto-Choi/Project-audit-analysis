@@ -1,60 +1,142 @@
 # SAP GL 기반 ERP Risk Analytics Pipeline
 
-## 프로젝트 개요
+> 클라이언트마다 구조가 다른 SAP GL 데이터를 config 하나로 표준화하고,  
+> 이상거래를 감사 리스크 관점에서 탐지하는 재사용 가능한 audit analytics 파이프라인.  
+> 공인회계사(CPA)가 감사 현장 경험을 바탕으로 설계했다.
 
-본 프로젝트는 SAP에서 추출한 비정형 ERP 데이터를 표준화·정제하고, config 기반 Rule Engine으로 이상거래를 탐지하며, 전표 단위 드릴다운 탐색 워크플로우를 제공하는 Risk Analytics Pipeline입니다. 2026년 4월부터 5월까지 주차별 스터디 프로젝트로 진행되었으며, 데이터 병합부터 configurable 리스크 탐지 모듈·인터랙티브 탐색 UI까지 단계적으로 구현했습니다.
+**기간** 2026.04 – 2026.05 (6주) · **유형** 개인 프로젝트 (정규 스터디)
 
-## 프로젝트 목적 및 의의
+---
 
-SAP GL 데이터는 클라이언트마다 상이한 컬럼명·금액 형태·날짜 형식을 가진 채 7~10개의 분리된 테이블로 제공되며, 리스크 판단 기준 또한 현장마다 다릅니다. 문제의 본질은 단순한 수작업 자동화가 아니라, 비정형 ERP 데이터를 어떻게 표준화하고 리스크 기반으로 탐색 가능한 구조로 만들 것인가에 있습니다. 본 프로젝트는 이에 다음 질문으로 접근했습니다.
+## 문제 정의
 
-> "클라이언트마다 다른 ERP 구조를 config로 대응하고, 리스크 기반으로 이상거래를 우선 탐색할 수 있는가?"
+SAP ERP에서 추출한 GL 데이터는 현장마다 구조가 다르다.
 
-계정 계층을 SAP 계정코드의 Prefix 구조에서 자동 생성하는 방식은 완전한 계정과목표가 제공되지 않는 현장에 대응하기 위한 것입니다. 이상거래 탐지 규칙을 코드와 분리하여 config로 관리하는 구조는, 클라이언트별 상이한 리스크 기준을 코드 수정 없이 수용하기 위한 설계입니다.
+- **컬럼명이 다르다** — 동일한 필드가 클라이언트마다 다른 이름으로 수출된다
+- **금액 형식이 다르다** — 절대금액형(차변/대변 분리), 순금액형(+/-), 차대분리형 세 포맷이 혼재한다
+- **리스크 기준이 다르다** — "고액"의 threshold, "월말 집중" 판단 일수가 engagement마다 다르다
+- **7~10개의 분리 테이블** — 전표 헤더(BKPF), 전표 라인(BSEG), 계정 마스터(SKA1/SKAT), 거래처 마스터(KNA1/LFA1), 코스트센터(CSKT)를 직접 병합해야 한다
 
-## 분석 방법
+전통적 접근은 매 현장마다 코드를 새로 짜거나 수작업으로 맞추는 것이다.  
+이 프로젝트는 그 반복 작업을 **config로 추상화**했다.
 
-**데이터 파이프라인:** 병합(w2) → 정제(w3) → 탐색(w4) → 리스크 탐지(w6)의 4단계로 구성됩니다. 정제 단계는 YAML 설정 파일로 컬럼 매핑을 관리하며, SAP 수출 포맷의 세 가지 유형(절대금액형·순금액형·차대분리형)을 모두 지원합니다. 정제 결과물에는 원본 18개 컬럼 외에 회계연월, 요일, 거래 부호 등 파생변수 16개가 추가됩니다.
+---
 
-**Rule Engine:** `config/anomaly_config.yaml`에 정의된 8개 Rule을 `src/anomaly.py`가 순회하며 `_flag_*` 컬럼을 생성합니다. Rule별 가중치를 합산해 전표 라인마다 `_risk_score`와 `_risk_level`(LOW / MEDIUM / HIGH)을 산출합니다. config 파일의 파라미터(`threshold`, `last_days`, `z_threshold` 등)만 수정하면 클라이언트별 기준에 대응할 수 있습니다.
+## 핵심 설계 결정
 
-| Rule | 탐지 기준 |
+### 1. Rule Engine — ML 대신 Rule을 선택한 이유
+
+감사에서 이상거래 탐지 결과는 감사 조서의 근거가 된다. 모델이 "왜 이상한가"를 설명할 수 없으면 조서에 쓸 수 없다. Rule Engine은 탐지 근거가 명확하고, 감사인이 파라미터를 직접 해석하고 조정할 수 있다.
+
+### 2. Config-driven 설계 — 코드와 파라미터를 분리한 이유
+
+`config_clean.yaml`은 컬럼 매핑과 금액 형식을, `anomaly_config.yaml`은 Rule 파라미터와 가중치를 담는다. 새 클라이언트에 적용할 때 코드는 건드리지 않고 config 파일만 교체한다. Rule 추가 시 함수 1개 + config 항목 1개만 작성하면 파이프라인 전체에 반영된다.
+
+### 3. 계정 계층 자동 생성 — 완전한 CoA 없이 적용 가능하게
+
+SAP 계정코드는 앞 1~2자리가 대분류를 나타내는 Prefix 구조를 갖는다. 이를 이용해 완전한 계정과목표(Chart of Accounts) 없이도 대/중/세분류 계층을 자동 생성한다. 계정과목표가 제공되지 않는 현장에도 바로 적용할 수 있다.
+
+> 설계 결정의 상세 근거: [`docs/architecture/system_overview.md`](docs/architecture/system_overview.md)
+
+---
+
+## 시스템 구성
+
+```
+Raw SAP 7-table Export
+        │
+        ▼
+    [Merge]  7개 테이블 병합 → 단일 GL master
+        │
+        ▼
+    [Clean]  config_clean.yaml 기반 컬럼 표준화 · 파생변수 생성
+        │
+     ┌──┴────────────────────────────┐
+     ▼                               ▼
+[Anomaly Detection]          [Excel Working Paper]
+anomaly_config.yaml          계정별 원장 조서 (3시트)
+8개 Rule → Risk Score
+     │
+     ▼
+[Streamlit UI]
+계정 탐색 / Risk View
+```
+
+| 기능 | 설명 |
 |---|---|
-| 비업무일 전기 | 토·일 전기 |
-| 월말 집중 전기 | 월말 기준 마지막 N일 이내 |
-| 역분개 전표 | reversal flag |
-| 중복 전표 | (doc_no, line_no) 중복 |
-| 비정상 정액 거래 | 금액이 설정 단위의 배수 |
-| 고액 수동 전기 | 특정 전표유형 + threshold 초과 |
-| 차대불균형 전표 | 전표 내 차변합계 ≠ 대변합계 |
-| 계정별 이상금액 | 계정별 Z-score 임계값 초과 |
+| 7개 SAP 테이블 병합 | BKPF · BSEG · SKA1 · SKAT · KNA1 · LFA1 · CSKT → 단일 GL master |
+| Config 기반 정제 | 컬럼 매핑 · 금액 형식(A/B/C형) · 파생변수를 YAML로 관리. 코드 수정 없이 포맷 전환 |
+| Rule Engine 이상탐지 | 8개 감사 Rule 실행 → 전표 라인별 Risk Score · Risk Level(LOW/MEDIUM/HIGH) 산출 |
+| 전표 드릴다운 UI | 계정 계층 → 원장 → 전표 분개 → 상대 계정 이동 (탐색 히스토리 포함) |
+| Risk View | Score 슬라이더 · Level · Flag 복합 필터로 고위험 거래 우선 탐색 |
+| Excel 조서 출력 | CONFIG 셀 1개 수정 → 원장 + 월별집계 + 유형별집계 3시트 자동 생성 |
 
-**계정 계층 생성:** 계정코드 Prefix를 기준으로 대분류·중분류를 자동 생성한 뒤 한글 계정명을 수동으로 보완합니다. 완전한 계정과목표에 의존하지 않으므로 계정 체계가 다른 클라이언트에도 적용 가능합니다.
+---
 
-**Streamlit UI:** 두 개의 탭으로 구성됩니다.
+## 이상탐지 Rule
 
-- **계정 탐색**: 사이드바에서 대/중/세분류 순으로 계정을 선택하고, 원장 테이블의 행을 클릭하면 전표 분개가 펼쳐집니다. 분개 화면은 차변·대변 금액을 통합 테이블로 표시하며, 계정 버튼 클릭으로 상대 계정 원장으로 이동합니다.
-- **Risk View**: Risk Score 슬라이더, Risk Level, Flag 종류로 필터링하여 High Risk 거래를 탐색합니다. 행 선택 시 전표 상세가 인라인으로 표시됩니다.
+감사 리스크 관점에서 설계한 8개 Rule. 각 Rule은 `anomaly_config.yaml`의 파라미터로 독립적으로 제어된다.
 
-**Excel 조서 출력:** 정제 완료 데이터에서 계정별 원장·집계 조서를 자동 생성합니다. 노트북 최상단 CONFIG 셀에서 계정코드·기간·집계 단위만 지정하면 원장 시트(AutoFilter·Freeze·이상거래 하이라이팅), 월별집계 시트, 전표유형별 집계 시트가 포함된 Excel 파일이 생성됩니다.
+| Rule | 타겟 감사 리스크 | 탐지 기준 |
+|---|---|---|
+| Weekend Posting | 내부통제 우회 의심 전기 | 토·일 전기일 |
+| Month-end Concentration | 기간 귀속 조작 가능성 | 월말 마지막 N일 집중 전기 |
+| Reversal Entry | 원상복구 패턴 (전기 취소) | Reversal flag 전표 |
+| Duplicate Journal | 이중 처리 의심 | 동일 전표번호·라인 중복 |
+| Unusual Round Amount | 가공 거래 의심 | 설정 단위(기본 100만 원)의 배수 금액 |
+| Large Manual Entry | 수동 전기 고위험 거래 | 특정 전표유형 + threshold 초과 |
+| Debit-Credit Imbalance | 전표 무결성 오류 | 전표 내 차대 불일치 |
+| Account-level Outlier | 계정별 비정상 금액 | 계정 내 Z-score 임계값 초과 |
 
-## 주요 결과
+> Rule별 가중치·threshold 설정: [`config/anomaly_config.yaml`](config/anomaly_config.yaml)  
+> Rule 선정 rationale 및 감사 기준 매핑: [`docs/rule_engine/rule_design_rationale.md`](docs/rule_engine/rule_design_rationale.md)
 
-Week 6 기준, 파이프라인 전 단계가 샘플 데이터에서 정상 작동합니다. Rule Engine은 332,103개 전표 라인에 대해 8개 Rule을 실행하여 49,163건(14.8%)을 HIGH, 274,598건(82.7%)을 MEDIUM으로 분류했습니다. 차대불균형 전표 21,374건, 계정별 이상금액 2,068건(20개 계정)이 탐지됐습니다.
+---
 
-config 파라미터 변경만으로 Rule 기준을 조정할 수 있으며, 신규 Rule 추가 시 함수 1개 작성 + config 1개 항목 추가만으로 파이프라인 전체에 반영됩니다.
+## 주요 결과 (샘플 데이터 기준)
+
+- 332,103개 GL line items 처리 (SAP 샘플 1 engagement 기준)
+- 8개 Rule 전 단계 정상 실행 확인
+- 차대불균형 전표 21,374건, 계정별 이상금액 2,068건(20개 계정) 탐지
+- Excel 조서: CONFIG 셀 1개 수정으로 원장·집계 3시트 자동 출력
+
+---
 
 ## 한계
 
-가장 큰 한계는 단일 샘플 데이터셋으로만 검증되었다는 점입니다. 정제 설정과 컬럼 매핑은 해당 샘플 구조에 맞춰져 있으며, 다른 클라이언트의 SAP 수출 파일에 적용 시 재설정이 얼마나 필요한지는 확인되지 않았습니다.
+- **단일 데이터셋 검증** — 모든 설정은 1개 SAP 샘플 기준. 다른 클라이언트 적용 시 config 재설정 범위 미검증
+- **Rule threshold 미튜닝** — 중복 전표·차대불균형 Rule은 오탐 가능성 있음. Engagement별 calibration 필요
+- **B형(순금액형) 미검증** — 입력 경로 설계 완료, 실 데이터 테스트 없음
 
-중복 전표 Rule이 97%를 탐지하고 있어 `(doc_no, line_no)` key 조합 재검토가 필요합니다. 차대불균형 Rule은 순금액형 전표 혼재로 오탐 가능성이 있습니다. 계정별 이상금액 Rule은 `Accounts payable` 계정에서 1,323건이 탐지되어 threshold 튜닝이 필요합니다. B형(순금액형) 입력 경로는 설계 완료 후 실제 데이터로 검증하지 못했습니다.
+> 한계 상세 및 재설계 방향: [`docs/validation/known_issues.md`](docs/validation/known_issues.md)
 
-## 향후 과제
+---
 
-- 중복 전표 Rule key 재설계 (doc_no + amount + acc_code 등 실무 기준으로 재정의)
-- 차대불균형 Rule에 전표유형 필터 추가 (순금액형 전표 제외)
-- Benford's Law 분석 모듈 구현
-- 제2 데이터셋 적용을 통한 파이프라인 범용성 검증
-- B형(순금액형) 입력 실데이터 검증
+## 기술 스택
 
+Python 3.11 · pandas · numpy · scipy · Streamlit · PyYAML · openpyxl
+
+---
+
+## 실행 방법
+
+```bash
+pip install streamlit pandas numpy pyyaml openpyxl scipy
+streamlit run app.py
+# 또는
+run_app.bat
+```
+
+데이터 재생성이 필요한 경우: `notebooks/w2_merge.ipynb` → `w3_clean.ipynb` → `src/anomaly.py`의 `run_anomaly_pipeline()` 순으로 실행.
+
+---
+
+## 문서
+
+| 문서 | 내용 |
+|---|---|
+| [`docs/architecture/system_overview.md`](docs/architecture/system_overview.md) | 전체 설계 결정 및 레이어 구조 |
+| [`docs/rule_engine/rule_design_rationale.md`](docs/rule_engine/rule_design_rationale.md) | Rule 선정 근거 및 감사 리스크 매핑 |
+| [`docs/rule_engine/config_reference.md`](docs/rule_engine/config_reference.md) | anomaly_config.yaml 파라미터 레퍼런스 |
+| [`docs/validation/known_issues.md`](docs/validation/known_issues.md) | 알려진 오탐 이슈 및 재설계 방향 |
+| [`docs/audit_logic/gl_structure_primer.md`](docs/audit_logic/gl_structure_primer.md) | SAP GL 구조 입문 (비SAP 독자용) |
