@@ -1,24 +1,37 @@
 # SAP GL 기반 ERP Risk Analytics Pipeline
 
-> 클라이언트마다 구조가 다른 SAP GL 데이터를 config 하나로 표준화하고,  
-> 이상거래를 감사 리스크 관점에서 탐지하는 재사용 가능한 audit analytics 파이프라인.  
-> 공인회계사(CPA)가 감사 현장 경험을 바탕으로 설계했다.
+> 수십만 건의 GL line item 중 감사인이 어디부터 봐야 하는지를 결정할 수 있도록,  
+> SAP ERP 데이터를 표준화하고 리스크 기반으로 우선순위를 부여하는 audit analytics pipeline.  
+> config 교체만으로 클라이언트별 ERP 구조와 리스크 기준에 대응한다.
 
 **기간** 2026.04 – 2026.05 (6주) · **유형** 개인 프로젝트 (정규 스터디)
 
 ---
 
+## 이 프로젝트를 만든 이유
+
+공인회계사(CPA)로서 SAP GL 데이터를 반복적으로 다루면서, 정작 시간이 많이 드는 문제가 "데이터 분석" 자체가 아니라는 것을 경험했다. 문제는 두 단계에 있었다.
+
+첫째, ERP 데이터 정제. 클라이언트마다 컬럼명, 금액 형식, 테이블 구조가 달라 매 engagement마다 동일한 정제 작업이 반복된다. 둘째, 탐색 우선순위 결정. 수십만 건의 전표 중 어떤 거래를 먼저 봐야 하는지 판단하는 데 많은 시간이 소요된다.
+
+이 프로젝트는 그 두 문제를 하나의 reusable system으로 해결하는 것을 목표로 했다. 모델 성능보다 **audit explainability**와 **investigation workflow**를 우선했다.
+
+---
+
 ## 문제 정의
 
-SAP ERP에서 추출한 GL 데이터는 현장마다 구조가 다르다.
+### Technical Pain — ERP 데이터 구조의 이질성
 
 - **컬럼명이 다르다** — 동일한 필드가 클라이언트마다 다른 이름으로 수출된다
 - **금액 형식이 다르다** — 절대금액형(차변/대변 분리), 순금액형(+/-), 차대분리형 세 포맷이 혼재한다
 - **리스크 기준이 다르다** — "고액"의 threshold, "월말 집중" 판단 일수가 engagement마다 다르다
-- **7~10개의 분리 테이블** — 전표 헤더(BKPF), 전표 라인(BSEG), 계정 마스터(SKA1/SKAT), 거래처 마스터(KNA1/LFA1), 코스트센터(CSKT)를 직접 병합해야 한다
+- **7~10개의 분리 테이블** — 전표 헤더(BKPF), 전표 라인(BSEG), 계정 마스터, 거래처 마스터를 직접 병합해야 한다
 
-전통적 접근은 매 현장마다 코드를 새로 짜거나 수작업으로 맞추는 것이다.  
-이 프로젝트는 그 반복 작업을 **config로 추상화**했다.
+### Business Pain — 반복 작업과 탐색 비효율
+
+감사 현장에서는 ERP 데이터 정제 자체보다, "어떤 거래를 우선 검토해야 하는가"를 결정하는 데 많은 시간이 소요된다. 데이터 구조가 engagement마다 달라 risk analytics workflow를 재사용하기 어렵고, 결국 동일한 정제 작업이 매번 반복된다.
+
+전통적 접근은 매 현장마다 코드를 새로 짜거나 수작업으로 맞추는 것이다. 이 프로젝트는 그 반복 구조를 **config로 추상화**했다.
 
 ---
 
@@ -37,6 +50,26 @@ SAP ERP에서 추출한 GL 데이터는 현장마다 구조가 다르다.
 SAP 계정코드는 앞 1~2자리가 대분류를 나타내는 Prefix 구조를 갖는다. 이를 이용해 완전한 계정과목표(Chart of Accounts) 없이도 대/중/세분류 계층을 자동 생성한다. 계정과목표가 제공되지 않는 현장에도 바로 적용할 수 있다.
 
 > 설계 결정의 상세 근거: [`docs/architecture/system_overview.md`](docs/architecture/system_overview.md)
+
+---
+
+## Audit Workflow — 감사인은 어떻게 쓰는가
+
+```
+1. SAP raw export 준비       클라이언트 SAP에서 7개 테이블 수출
+        ↓
+2. Config 설정               컬럼명 매핑, 금액 형식, Rule threshold를 YAML로 지정
+        ↓
+3. GL Standardization        7개 테이블 병합 → 컬럼 표준화 → 파생변수 생성
+        ↓
+4. Risk Scoring              8개 Rule 실행 → 전표 라인별 Risk Score / Level 산출
+        ↓
+5. High-risk 우선 탐색        Risk View에서 Score / Level / Flag 필터로 검토 대상 압축
+        ↓
+6. Voucher Drilldown         의심 전표 클릭 → 분개 전체 조회 → 상대 계정 이동
+        ↓
+7. Working Paper Export      계정별 원장 + 집계 조서 Excel 자동 출력
+```
 
 ---
 
@@ -95,10 +128,16 @@ anomaly_config.yaml          계정별 원장 조서 (3시트)
 
 ## 주요 결과 (샘플 데이터 기준)
 
-- 332,103개 GL line items 처리 (SAP 샘플 1 engagement 기준)
-- 8개 Rule 전 단계 정상 실행 확인
-- 차대불균형 전표 21,374건, 계정별 이상금액 2,068건(20개 계정) 탐지
+SAP 샘플 1 engagement, 332,103개 GL line items 처리.
+
+Rule 기반 필터링으로 감사인의 초기 검토 대상을 전체 population의 일부로 압축할 수 있는 구조를 확인했다. threshold calibration 후 engagement별 HIGH Risk 비율 조정이 가능하다.
+
+- 차대불균형 전표 21,374건 탐지 (전표 무결성 검증)
+- 계정별 이상금액(Z-score 3σ 초과) 2,068건, 20개 계정에서 탐지
 - Excel 조서: CONFIG 셀 1개 수정으로 원장·집계 3시트 자동 출력
+- 8개 Rule 전 단계 정상 실행 확인
+
+> 현재 threshold 설정은 단일 샘플 기준이며 tuning 미완료. 상세: [`docs/validation/known_issues.md`](docs/validation/known_issues.md)
 
 ---
 
