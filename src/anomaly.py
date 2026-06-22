@@ -1,6 +1,6 @@
 """
-anomaly.py — Week 6 Rule Engine 모듈
-config 기반 이상탐지 Rule 실행, Risk Score 계산, 요약 집계
+anomaly.py — config 기반 Rule Engine 모듈
+이상탐지 Rule 실행, Risk Score 계산, 요약 집계
 """
 
 import os

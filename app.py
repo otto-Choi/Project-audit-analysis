@@ -1,5 +1,5 @@
 """
-app.py — Week 6 GL 드릴다운 탐색 + Risk View
+app.py — GL 드릴다운 탐색 + Risk View
 실행: streamlit run app.py
 """
 
@@ -372,15 +372,24 @@ def render_risk_view():
         col_a, col_b = st.columns(2)
         col_a.write(f"**전기일**: {info.get('post_date', '')}")
         col_b.write(f"**전표유형**: {info.get('doc_type', '')}")
-        col1, col2 = st.columns(2)
-        with col1:
-            st.subheader("차변")
-            for item in entry.get("debit", []):
-                st.write(f"{item['acc_name']}  {item['amount']:,.0f}")
-        with col2:
-            st.subheader("대변")
-            for item in entry.get("credit", []):
-                st.write(f"{item['acc_name']}  {item['amount']:,.0f}")
+
+        rows = []
+        for item in entry.get("debit", []):
+            rows.append({"구분": "차변", "계정코드": item["acc_code"],
+                         "계정명": item["acc_name"], "차변금액": item["amount"], "대변금액": None})
+        for item in entry.get("credit", []):
+            rows.append({"구분": "대변", "계정코드": item["acc_code"],
+                         "계정명": item["acc_name"], "차변금액": None, "대변금액": item["amount"]})
+        if rows:
+            st.dataframe(
+                pd.DataFrame(rows),
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "차변금액": st.column_config.NumberColumn("차변금액", format="%,.0f"),
+                    "대변금액": st.column_config.NumberColumn("대변금액", format="%,.0f"),
+                },
+            )
         if entry.get("balanced"):
             st.success("차대균형 일치")
         else:
@@ -388,7 +397,7 @@ def render_risk_view():
 
 
 def main():
-    st.set_page_config(page_title="GL 분석", layout="wide")
+    st.set_page_config(page_title="ERP Risk Analytics", page_icon="📊", layout="wide")
     init_state()
 
     if not os.path.exists(GL_PATH):

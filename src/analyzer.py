@@ -1,6 +1,6 @@
 """
-analyzer.py — Week 4 데이터 처리 모듈
-UI와 분리된 계정 계층 탐색 및 집계 함수군
+analyzer.py — 계정 계층 탐색 및 원장 조회 모듈
+UI와 분리된 데이터 처리 함수군 (load, ledger, journal, balance)
 """
 
 import pandas as pd
@@ -166,18 +166,6 @@ def get_journal_entry(df: pd.DataFrame, doc_no: str) -> dict:
         "post_date": str(first.get("post_date", ""))[:10],
         "doc_type": first.get("doc_type", ""),
     }
-
-    def _rows(mask):
-        return [
-            {
-                "acc_code": str(r.get("acc_code", "")),
-                "acc_name": str(r.get("acc_name", "")),
-                "amount": float(r.get("_debit" if is_debit else "_credit", 0) or 0),
-                "line_no": str(r.get("line_no", "")),
-            }
-            for _, r in lines[mask].iterrows()
-            for is_debit in [mask.name == "debit_mask"]  # resolved below
-        ]
 
     debit_mask = lines["_debit"].fillna(0) > 0
     credit_mask = lines["_credit"].fillna(0) > 0

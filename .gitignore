@@ -4,6 +4,10 @@ data/w3_interim/
 data/w4_processed/
 data/w5_output/
 data/w6_anomaly/
+data/dataset_git/
+
+# 레거시 (구버전 파일)
+docs/legacy/
 
 # Python
 __pycache__/
