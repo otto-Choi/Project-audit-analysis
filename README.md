@@ -108,6 +108,21 @@ anomaly_config.yaml          계정별 원장 조서 (3시트)
 4. High-risk 우선 탐색   Risk View 필터로 검토 대상 압축 → 전표 드릴다운 → Excel 조서 출력
 ```
 
+### 동작 예시
+
+<table>
+<tr>
+<td align="center" width="50%">
+<img src="docs/screenshots/browse.png" /><br/>
+<sub>계정 탐색</sub>
+</td>
+<td align="center" width="50%">
+<img src="docs/screenshots/risk_view.png"/><br/>
+<sub>Risk View</sub>
+</td>
+</tr>
+
+
 ---
 
 ## 주요 결과
